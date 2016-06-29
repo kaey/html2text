@@ -20,6 +20,7 @@ type textifyTraverseCtx struct {
 	Buf bytes.Buffer
 
 	endsWithSpace bool
+	stateInTable  bool
 }
 
 func (ctx *textifyTraverseCtx) Traverse(node *html.Node) error {
@@ -94,20 +95,48 @@ func (ctx *textifyTraverseCtx) Traverse(node *html.Node) error {
 
 			return ctx.Emit(hrefLink)
 
-		case atom.P, atom.Ul, atom.Table:
+		case atom.P, atom.Ul:
+			if !ctx.stateInTable {
+				if err := ctx.Emit("\n\n"); err != nil {
+					return err
+				}
+			}
+
+			if err := ctx.TraverseChildren(node); err != nil {
+				return err
+			}
+
+			if !ctx.stateInTable {
+				if err := ctx.Emit("\n\n"); err != nil {
+					return err
+				}
+			}
+
+			return nil
+
+		case atom.Table:
 			if err := ctx.Emit("\n\n"); err != nil {
 				return err
 			}
 
+			ctx.stateInTable = true
 			if err := ctx.TraverseChildren(node); err != nil {
 				return err
 			}
+			ctx.stateInTable = false
 
 			return ctx.Emit("\n\n")
 
 		case atom.Tr:
-			if err := ctx.TraverseChildren(node); err != nil {
-				return err
+			for c := node.FirstChild; c != nil; c = c.NextSibling {
+				if c.DataAtom == atom.Td && c != node.FirstChild {
+					if err := ctx.Emit("\t"); err != nil {
+						return err
+					}
+				}
+				if err := ctx.Traverse(c); err != nil {
+					return err
+				}
 			}
 
 			return ctx.Emit("\n")
